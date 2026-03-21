@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Scrypted plugin for Wyze IP cameras using the native P2P/DTLS protocol (TUTK IOTC). Provides local video streaming without the Wyze app or cloud RTSP. The repo contains two components:
 
 - **Plugin** (`src/`) — Scrypted DeviceProvider plugin, bundled by `scrypted-webpack`
-- **Library** (`wyze-bridge/`) — Wyze P2P/DTLS protocol implementation, consumed as a local file dependency (`file:./wyze-bridge`)
+- **Library (`wyze-bridge/` → symlink to `wyze-bridge-js` repo) — Wyze P2P/DTLS protocol implementation, consumed as a local file dependency (`file:./wyze-bridge`)
 
 ## Build Commands
 
@@ -17,7 +17,7 @@ npm run build              # scrypted-webpack → dist/main.nodejs.js + dist/plu
 npm run scrypted-deploy-debug  # build + deploy to debug Scrypted instance
 ```
 
-### Library (wyze-bridge/)
+### Library (wyze-bridge-js/)
 ```bash
 cd wyze-bridge
 npm run build              # tsup (ESM+CJS)
@@ -29,7 +29,7 @@ npm run typecheck           # tsc --noEmit
 ./build-lib.sh             # builds library then runs npm install at root
 ```
 
-After modifying `wyze-bridge/`, always run `./build-lib.sh` from the root before building/deploying the plugin.
+After modifying `wyze-bridge-js/`, always run `./build-lib.sh` from the root before building/deploying the plugin.
 
 ## Architecture
 
@@ -76,6 +76,6 @@ VS Code launch config attaches to a Scrypted instance on port 10081 (configured 
 The plugin references sibling local repos via `file:` paths:
 - `@scrypted/common` → `../../scrypted/common`
 - `@scrypted/rtsp` → `../../scrypted/plugins/rtsp`
-- `@camstack/wyze-bridge` → `./wyze-bridge`
+- `@apocaliss92/wyze-bridge-js` → `./wyze-bridge`
 
 These must exist on disk for `npm install` to succeed.

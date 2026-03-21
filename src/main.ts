@@ -134,7 +134,7 @@ export default class WyzeNativeProvider
     const creds = this.getCloudCredentials();
 
     try {
-      const { WyzeCloud } = await import("@camstack/wyze-bridge");
+      const { WyzeCloud } = await import("@apocaliss92/wyze-bridge-js");
       const cloud = new WyzeCloud(creds.apiKey, creds.apiId);
       await cloud.login(creds.email, creds.password);
       const cameraList = await cloud.getCameraList();

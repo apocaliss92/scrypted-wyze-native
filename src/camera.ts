@@ -248,7 +248,7 @@ export class WyzeNativeCamera
       `bitrate=${this.storage.getItem("bitrate") || "max"}`
     );
 
-    const { createWyzeRfc4571Server } = await import("@camstack/wyze-bridge");
+    const { createWyzeRfc4571Server } = await import("@apocaliss92/wyze-bridge-js");
 
     const server = await createWyzeRfc4571Server({
       camera: info,

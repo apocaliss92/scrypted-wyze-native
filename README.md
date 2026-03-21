@@ -1,44 +1,39 @@
 # Wyze Native
 
-Scrypted plugin for Wyze cameras using the native P2P/DTLS protocol. Provides local video streaming without relying on the Wyze app or cloud RTSP.
+Scrypted plugin for Wyze cameras using the native P2P/DTLS protocol. Streams video directly from the camera over your local network — the Wyze cloud is only used for initial device discovery.
 
 ## Features
 
-- **Native P2P streaming** — connects directly to Wyze cameras on your LAN via TUTK/DTLS protocol
-- **No cloud dependency for streaming** — cloud API is only used for initial device discovery (getting P2P connection parameters)
-- **H264 1080p/720p/360p/2K** — configurable resolution per camera
+- **Local P2P streaming** — H264 1080p/720p/360p/2K directly from camera
+- **No cloud streaming dependency** — cloud API used only for discovery
 - **Auto-discovery** — finds all cameras from your Wyze account
-- **Multiple concurrent viewers** — single P2P connection shared across viewers
-- **Idle teardown** — automatically disconnects when no viewers are active
+- **Multiple concurrent viewers** — single P2P connection shared
+- **Idle teardown** — auto-disconnects when no viewers (configurable)
+- **Two-way audio** — detected automatically (playback coming soon)
 
 ## Requirements
 
-- Wyze camera on the same local network
-- Wyze account credentials (email + password)
-- Wyze Developer API Key and Key ID from [Wyze Developer Portal](https://support.wyze.com/hc/en-us/articles/16129834216731)
+- Wyze camera(s) on the same local network as Scrypted
+- Wyze account with **email + password** login (Google/Apple sign-in not supported by API)
+- Wyze Developer API Key and Key ID
 
 ## Setup
 
 1. Install the plugin in Scrypted
-2. Configure your Wyze account credentials in plugin settings
-3. Configure your Wyze Developer API Key and Key ID
-4. Click "Discover Devices" to find your cameras
+2. Configure credentials in plugin settings:
+   - **Email** — your Wyze account email
+   - **Password** — your Wyze account password
+   - **API Key** — from [Wyze Developer Portal](https://support.wyze.com/hc/en-us/articles/16129834216731)
+   - **Key ID** — associated with the API Key
+3. Click **Discover Devices**
 
-## Supported Cameras
+### If you signed up with Google/Apple/Facebook
 
-Tested with DTLS-enabled Wyze cameras. The plugin uses the same P2P protocol as the go2rtc Wyze integration.
+You need to add a password to your Wyze account:
+1. Open the **Wyze app** → Account → Security → Password
+2. Or go to [wyze.com](https://www.wyze.com) → sign in → Account Settings → set a password
 
-## Technical Details
-
-- Protocol: TUTK IOTC → DTLS 1.2 (ECDHE-PSK + ChaCha20-Poly1305) → AV frames
-- Video: H264/H265 via FrameHandler parsing
-- Audio: PCM 16-bit LE (receive only, for now)
-- Streaming: RFC 4571 (RTP over TCP) to Scrypted
-
-## Credits
-
-- Based on the [go2rtc Wyze implementation](https://github.com/AlexxIT/go2rtc/tree/master/pkg/wyze)
-- Uses `@camstack/wyze-bridge` library for P2P protocol
+**Documentation:** [https://advanced-notifier-docs.zentik.app/docs/wyze-native](https://advanced-notifier-docs.zentik.app/docs/wyze-native)
 
 [For requests and bugs](https://github.com/apocaliss92/scrypted-wyze-native)
 

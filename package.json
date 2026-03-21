@@ -1,0 +1,54 @@
+{
+  "name": "@apocaliss92/scrypted-wyze-native",
+  "version": "0.1.0",
+  "description": "Wyze camera integration for Scrypted using native P2P/DTLS protocol",
+  "author": "@apocaliss92",
+  "license": "Apache",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apocaliss92/scrypted-wyze-native"
+  },
+  "scripts": {
+    "build:lib": "./build-lib.sh",
+    "scrypted-setup-project": "scrypted-setup-project",
+    "prescrypted-setup-project": "scrypted-package-json",
+    "build": "scrypted-webpack",
+    "prepublish-patch": "./prepublish-patch.sh",
+    "prepublishOnly": "./prepublish-patch.sh && NODE_ENV=production scrypted-webpack",
+    "prescrypted-vscode-launch": "scrypted-webpack",
+    "scrypted-vscode-launch": "scrypted-deploy-debug",
+    "scrypted-deploy-debug": "scrypted-deploy-debug",
+    "scrypted-debug": "scrypted-debug",
+    "scrypted-deploy": "scrypted-deploy",
+    "scrypted-readme": "scrypted-readme",
+    "scrypted-package-json": "scrypted-package-json"
+  },
+  "keywords": [
+    "scrypted",
+    "plugin",
+    "wyze",
+    "native",
+    "camera",
+    "p2p",
+    "dtls"
+  ],
+  "scrypted": {
+    "name": "Wyze Native",
+    "type": "DeviceProvider",
+    "interfaces": [
+      "DeviceProvider",
+      "DeviceCreator",
+      "DeviceDiscovery",
+      "Settings"
+    ]
+  },
+  "dependencies": {
+    "@scrypted/common": "file:../../scrypted/common",
+    "@scrypted/rtsp": "file:../../scrypted/plugins/rtsp",
+    "@scrypted/sdk": "^0.3.118",
+    "@camstack/wyze-bridge": "file:./wyze-bridge"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.2"
+  }
+}

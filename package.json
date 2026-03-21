@@ -46,7 +46,7 @@
     "@scrypted/common": "file:../../scrypted/common",
     "@scrypted/rtsp": "file:../../scrypted/plugins/rtsp",
     "@scrypted/sdk": "^0.3.118",
-    "@apocaliss92/wyze-bridge-js": "0.1.0"
+    "@apocaliss92/wyze-bridge-js": "file:./wyze-bridge"
   },
   "devDependencies": {
     "@types/node": "^22.0.2"

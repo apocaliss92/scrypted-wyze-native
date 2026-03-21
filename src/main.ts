@@ -150,6 +150,8 @@ export default class WyzeNativeProvider
           type: ScryptedDeviceType.Camera,
           interfaces: [
             ScryptedInterface.VideoCamera,
+            ScryptedInterface.Camera,
+            ScryptedInterface.MotionSensor,
             ScryptedInterface.Settings,
             ScryptedInterface.Online,
           ],
@@ -221,7 +223,9 @@ export default class WyzeNativeProvider
         nativeId,
         name,
         type: ScryptedDeviceType.Camera,
-        interfaces: [ScryptedInterface.VideoCamera, ScryptedInterface.Settings, ScryptedInterface.Online],
+        interfaces: [ScryptedInterface.VideoCamera,
+            ScryptedInterface.Camera,
+            ScryptedInterface.MotionSensor, ScryptedInterface.Settings, ScryptedInterface.Online],
       } as any],
     });
     return nativeId;

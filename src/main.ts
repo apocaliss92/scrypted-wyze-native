@@ -141,7 +141,7 @@ export default class WyzeNativeProvider
 
       const devices: DiscoveredDevice[] = [];
       for (const cam of cameraList) {
-        const nativeId = cam.mac;
+        const nativeId = cam.mac.toUpperCase();
 
         devices.push({
           nativeId,
@@ -206,7 +206,7 @@ export default class WyzeNativeProvider
     if (!ip || !uid || !enr || !mac) throw new Error("IP, UID, ENR, and MAC are required");
 
     const name = settings.name?.toString() || `Wyze Camera (${ip})`;
-    const nativeId = mac;
+    const nativeId = mac.toUpperCase();
 
     // Store camera info
     const camInfo = {

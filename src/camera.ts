@@ -40,6 +40,8 @@ interface WyzeRfc4571Server {
   videoType: string;
   connection: any; // WyzeDTLSConn
   close: () => Promise<void>;
+  readonly clientCount: number;
+  onClientDisconnect: (cb: (remaining: number) => void) => void;
 }
 
 export class WyzeNativeCamera
@@ -50,7 +52,6 @@ export class WyzeNativeCamera
   private rfcServer: WyzeRfc4571Server | null = null;
   private rfcServerPromise: Promise<WyzeRfc4571Server> | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
-  private activeViewers = 0;
   private eventPollTimer: ReturnType<typeof setInterval> | null = null;
   private lastEventTs = 0;
   private boaMotionStopper: (() => void) | null = null;
@@ -272,19 +273,18 @@ export class WyzeNativeCamera
   // ─── VideoCamera ───────────────────────────────────────────────
 
   async getVideoStreamOptions(): Promise<ResponseMediaStreamOptions[]> {
-    return [{ id: "native-main", name: "Native P2P", container: "rtp", video: { codec: "h264" } }];
+    return [{ id: "native-main", name: "Native P2P", container: "rtp", video: { codec: "h264" }, audio: null }];
   }
 
   async getVideoStream(_options?: RequestMediaStreamOptions): Promise<MediaObject> {
     const server = await this.ensureRfcServer();
-    this.activeViewers++;
     this.clearIdleTimer();
+    // SDP from the RFC4571 server already includes audio track if detected
     const rfc = {
       url: new URL(`tcp://${server.host}:${server.port}`),
       sdp: server.sdp,
-      mediaStreamOptions: { id: "native-main", name: "Native P2P", container: "rtp", video: { codec: server.videoType.toLowerCase() } },
+      mediaStreamOptions: { id: "native-main", name: "Native P2P", container: "rtp", video: { codec: server.videoType.toLowerCase() }, audio: null },
     };
-    this.scheduleIdleTeardown();
     return await sdk.mediaManager.createMediaObject(Buffer.from(JSON.stringify(rfc)), "x-scrypted/x-rfc4571");
   }
 
@@ -425,6 +425,14 @@ export class WyzeNativeCamera
     });
     this.console.log(`✅ P2P: tcp://${server.host}:${server.port} (${server.videoType})`);
 
+    // Start idle timer when last TCP client disconnects
+    server.onClientDisconnect((remaining) => {
+      if (remaining === 0) {
+        this.console.log("Last viewer disconnected, scheduling idle teardown");
+        this.scheduleIdleTeardown();
+      }
+    });
+
     // Auto-discover accessories after first connection
     setTimeout(() => this.discoverAccessories().catch(() => {}), 3000);
 
@@ -435,9 +443,14 @@ export class WyzeNativeCamera
     this.clearIdleTimer();
     const ms = this.provider.getIdleTimeoutMs();
     if (ms <= 0) return;
+    // Only tear down if no TCP clients are connected
     this.idleTimer = setTimeout(async () => {
-      this.activeViewers = Math.max(0, this.activeViewers - 1);
-      if (this.activeViewers === 0) await this.teardownConnection("idle");
+      if (this.rfcServer && this.rfcServer.clientCount > 0) {
+        // Clients still connected — reschedule
+        this.scheduleIdleTeardown();
+        return;
+      }
+      await this.teardownConnection("idle");
     }, ms);
   }
 
@@ -451,7 +464,7 @@ export class WyzeNativeCamera
       try { await this.rfcServer.close(); } catch {}
       this.rfcServer = null; this.rfcServerPromise = null;
     }
-    this.clearIdleTimer(); this.activeViewers = 0;
+    this.clearIdleTimer();
   }
 
   // ─── Diagnostics ──────────────────────────────────────────────

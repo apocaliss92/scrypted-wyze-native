@@ -139,11 +139,14 @@ export default class WyzeNativeProvider
       await cloud.login(creds.email, creds.password);
       const cameraList = await cloud.getCameraList();
 
-      const devices: DiscoveredDevice[] = [];
+      const existingNativeIds = new Set(deviceManager.getNativeIds());
+      const newDevices: DiscoveredDevice[] = [];
+      const existingDevices: DiscoveredDevice[] = [];
+
       for (const cam of cameraList) {
         const nativeId = cam.mac.toUpperCase();
 
-        devices.push({
+        const device: DiscoveredDevice = {
           nativeId,
           name: cam.nickname,
           description: `${cam.productModel} (${cam.ip})`,
@@ -162,19 +165,28 @@ export default class WyzeNativeProvider
             firmware: cam.firmwareVer,
             manufacturer: "Wyze",
           },
-        });
+        };
 
         // Persist the full camera info (P2P params needed for connection)
         this.storage.setItem(`cam:${nativeId}`, JSON.stringify(cam));
+
+        if (existingNativeIds.has(nativeId)) {
+          existingDevices.push(device);
+        } else {
+          newDevices.push(device);
+        }
       }
 
-      await deviceManager.onDevicesChanged({
-        providerNativeId: this.nativeId,
-        devices: devices as any,
-      });
+      // Update already-adopted devices (refresh info like IP, firmware, etc.)
+      if (existingDevices.length > 0) {
+        await deviceManager.onDevicesChanged({
+          providerNativeId: this.nativeId,
+          devices: existingDevices as any,
+        });
+      }
 
-      this.console.log(`Found ${devices.length} camera(s): ${cameraList.map(c => c.nickname).join(", ")}`);
-      return devices;
+      this.console.log(`Found ${cameraList.length} camera(s): ${cameraList.map(c => c.nickname).join(", ")}${newDevices.length > 0 ? ` (${newDevices.length} new)` : ""}`);
+      return newDevices;
     } catch (e: any) {
       this.console.error("Discovery failed:", e?.message);
       throw e;

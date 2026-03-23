@@ -12,25 +12,35 @@ export class WyzeFloodlight extends ScryptedDeviceBase implements OnOff {
   }
 
   async turnOn(): Promise<void> {
-    this.camera.console.log(`[Floodlight] Turning on`);
+    this.console.log(`[Floodlight] turnOn() called`);
+    this.camera.console.log(`[Floodlight] turnOn() called`);
     this.on = true;
     try {
+      this.console.log(`[Floodlight] Getting P2P connection...`);
       const conn = await this.camera.getConnection();
+      this.console.log(`[Floodlight] Got connection, sending setSpotlight(true)...`);
       await conn.setSpotlight(true);
+      this.console.log(`[Floodlight] setSpotlight(true) completed`);
     } catch (e: any) {
-      this.camera.console.error(`[Floodlight] Failed: ${e?.message}`);
+      this.console.error(`[Floodlight] turnOn failed: ${e?.message}`);
+      this.camera.console.error(`[Floodlight] turnOn failed: ${e?.message}`);
       throw e;
     }
   }
 
   async turnOff(): Promise<void> {
-    this.camera.console.log(`[Floodlight] Turning off`);
+    this.console.log(`[Floodlight] turnOff() called`);
+    this.camera.console.log(`[Floodlight] turnOff() called`);
     this.on = false;
     try {
+      this.console.log(`[Floodlight] Getting P2P connection...`);
       const conn = await this.camera.getConnection();
+      this.console.log(`[Floodlight] Got connection, sending setSpotlight(false)...`);
       await conn.setSpotlight(false);
+      this.console.log(`[Floodlight] setSpotlight(false) completed`);
     } catch (e: any) {
-      this.camera.console.error(`[Floodlight] Failed: ${e?.message}`);
+      this.console.error(`[Floodlight] turnOff failed: ${e?.message}`);
+      this.camera.console.error(`[Floodlight] turnOff failed: ${e?.message}`);
       throw e;
     }
   }

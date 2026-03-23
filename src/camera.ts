@@ -69,7 +69,9 @@ export class WyzeNativeCamera
   // ─── Public: expose P2P connection for accessories ─────────────
 
   async getConnection(): Promise<any> {
+    this.console.log(`[getConnection] Requested, rfcServer=${!!this.rfcServer}`);
     const server = await this.ensureRfcServer();
+    this.console.log(`[getConnection] Connection ready`);
     return server.connection;
   }
 
@@ -83,14 +85,18 @@ export class WyzeNativeCamera
   // ─── DeviceProvider (sub-devices: siren, floodlight) ───────────
 
   async getDevice(nativeId: string): Promise<any> {
+    this.console.log(`[getDevice] nativeId=${nativeId}`);
     if (nativeId.endsWith(sirenSuffix)) {
       if (!this.siren) this.siren = new WyzeSiren(this, nativeId);
+      this.console.log(`[getDevice] Returning siren`);
       return this.siren;
     }
     if (nativeId.endsWith(floodlightSuffix)) {
       if (!this.floodlight) this.floodlight = new WyzeFloodlight(this, nativeId);
+      this.console.log(`[getDevice] Returning floodlight`);
       return this.floodlight;
     }
+    this.console.log(`[getDevice] No match, returning undefined`);
     return undefined;
   }
 

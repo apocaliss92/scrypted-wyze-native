@@ -204,21 +204,21 @@ export default class WyzeNativeProvider
 
     const camInfo = JSON.parse(raw);
 
-    // Notify Scrypted so the device is actually created (same as createDevice).
-    await deviceManager.onDevicesChanged({
+    // Use onDeviceDiscovered (additive, single device) instead of
+    // onDevicesChanged (batch replacement). This is the same pattern
+    // used by scrypted-reolink-native's createDevice.
+    await deviceManager.onDeviceDiscovered({
+      nativeId,
+      name: camInfo.nickname || `Wyze Camera (${nativeId})`,
+      type: ScryptedDeviceType.Camera,
+      interfaces: [
+        ScryptedInterface.VideoCamera,
+        ScryptedInterface.Camera,
+        ScryptedInterface.MotionSensor,
+        ScryptedInterface.Settings,
+        ScryptedInterface.Online,
+      ],
       providerNativeId: this.nativeId,
-      devices: [{
-        nativeId,
-        name: camInfo.nickname || `Wyze Camera (${nativeId})`,
-        type: ScryptedDeviceType.Camera,
-        interfaces: [
-          ScryptedInterface.VideoCamera,
-          ScryptedInterface.Camera,
-          ScryptedInterface.MotionSensor,
-          ScryptedInterface.Settings,
-          ScryptedInterface.Online,
-        ],
-      } as any],
     });
 
     return nativeId;

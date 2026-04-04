@@ -135,8 +135,25 @@ export default class WyzeNativeProvider
 
     try {
       const { WyzeCloud } = await import("@apocaliss92/wyze-bridge-js");
-      const cloud = new WyzeCloud(creds.apiKey, creds.apiId);
-      await cloud.login(creds.email, creds.password);
+      const cloud = new WyzeCloud({
+        apiKey: creds.apiKey,
+        apiId: creds.apiId,
+        loadSession: () => {
+          try {
+            const raw = this.storage.getItem("wyze-session");
+            return raw ? JSON.parse(raw) : null;
+          } catch { return null; }
+        },
+        saveSession: (session) => {
+          this.storage.setItem("wyze-session", JSON.stringify(session));
+        },
+        clearSession: () => {
+          this.storage.removeItem("wyze-session");
+        },
+      });
+
+      // Reuse existing session or refresh/login as needed
+      await cloud.ensureSession(creds.email, creds.password);
       const cameraList = await cloud.getCameraList();
 
       const existingNativeIds = new Set(deviceManager.getNativeIds());

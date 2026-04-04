@@ -194,7 +194,34 @@ export default class WyzeNativeProvider
   }
 
   async adoptDevice(device: AdoptDevice): Promise<string> {
-    return device.nativeId;
+    const nativeId = device.nativeId;
+
+    // Camera info was persisted during discoverDevices(). Verify it exists.
+    const raw = this.storage.getItem(`cam:${nativeId}`);
+    if (!raw) {
+      throw new Error(`Camera info not found for ${nativeId}. Run discovery first.`);
+    }
+
+    const camInfo = JSON.parse(raw);
+
+    // Notify Scrypted so the device is actually created (same as createDevice).
+    await deviceManager.onDevicesChanged({
+      providerNativeId: this.nativeId,
+      devices: [{
+        nativeId,
+        name: camInfo.nickname || `Wyze Camera (${nativeId})`,
+        type: ScryptedDeviceType.Camera,
+        interfaces: [
+          ScryptedInterface.VideoCamera,
+          ScryptedInterface.Camera,
+          ScryptedInterface.MotionSensor,
+          ScryptedInterface.Settings,
+          ScryptedInterface.Online,
+        ],
+      } as any],
+    });
+
+    return nativeId;
   }
 
   // ─── Device Creator (manual add) ──────────────────────────────

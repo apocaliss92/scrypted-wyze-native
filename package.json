@@ -1,6 +1,6 @@
 {
   "name": "@apocaliss92/scrypted-wyze-native",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Wyze camera integration for Scrypted using native P2P/DTLS protocol",
   "author": "@apocaliss92",
   "license": "Apache",

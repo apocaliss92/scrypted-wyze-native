@@ -439,6 +439,19 @@ export class WyzeNativeCamera
       }
     });
 
+    // If the library tears down the server from the inside (e.g. the P2P
+    // health monitor detected a dead stream), clear our reference so the next
+    // getVideoStream() call creates a fresh connection instead of reusing a
+    // dead server.
+    server.onServerClose((reason) => {
+      this.console.log(`P2P server closed internally: ${reason} — releasing ref`);
+      if (this.rfcServer === server) {
+        this.rfcServer = null;
+        this.rfcServerPromise = null;
+      }
+      this.clearIdleTimer();
+    });
+
     // Auto-discover accessories after first connection
     setTimeout(() => this.discoverAccessories().catch(() => {}), 3000);
 

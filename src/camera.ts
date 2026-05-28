@@ -387,14 +387,11 @@ export class WyzeNativeCamera
   }
 
   private async pollCloudEvents(): Promise<void> {
-    const creds = this.provider.getCloudCredentials();
-    if (!creds.apiKey || !creds.email) return;
     const info = this.provider.getCameraInfo(this.nativeId);
     if (!info?.mac) return;
     try {
-      const { WyzeCloud } = await import("@apocaliss92/wyze-bridge-js");
-      const cloud = new WyzeCloud(creds.apiKey, creds.apiId);
-      await cloud.login(creds.email, creds.password);
+      const cloud = await this.provider.getCloudClient();
+      if (!cloud) return;
       const events = await cloud.getEventList({ macs: [info.mac], beginTime: this.lastEventTs ? (this.lastEventTs + 1) : Date.now() - 60000, count: 5 });
       for (const ev of events) {
         if (ev.timestamp > this.lastEventTs) {
@@ -506,12 +503,9 @@ export class WyzeNativeCamera
       const info = this.provider.getCameraInfo(this.nativeId);
       if (info) diag._cloudInfo = { nickname: info.nickname, productModel: info.productModel, mac: info.mac, ip: info.ip, firmwareVer: info.firmwareVer };
       try {
-        const creds = this.provider.getCloudCredentials();
-        if (creds.apiKey && info?.mac) {
-          const { WyzeCloud } = await import("@apocaliss92/wyze-bridge-js");
-          const cloud = new WyzeCloud(creds.apiKey, creds.apiId);
-          await cloud.login(creds.email, creds.password);
-          diag._recentEvents = await cloud.getEventList({ macs: [info.mac], count: 5 });
+        if (info?.mac) {
+          const cloud = await this.provider.getCloudClient();
+          if (cloud) diag._recentEvents = await cloud.getEventList({ macs: [info.mac], count: 5 });
         }
       } catch {}
       this.console.log("📋 Diagnostics:\n" + JSON.stringify(diag, null, 2));

@@ -123,6 +123,40 @@ export default class WyzeNativeProvider
     };
   }
 
+  /**
+   * Build a WyzeCloud client wired to the shared session storage and ensure
+   * the auth token is valid. Reuses an existing session if still valid;
+   * otherwise refreshes the token or performs a full login. Callers should
+   * always go through this helper instead of constructing `new WyzeCloud(...)`
+   * directly so that we don't re-authenticate on every poll (Wyze rate-limits
+   * the auth endpoint at ~1 req/30s per IP — see issue #3).
+   */
+  async getCloudClient(): Promise<any | null> {
+    if (!this.hasCredentials()) return null;
+    const creds = this.getCloudCredentials();
+    const { WyzeCloud } = await import("@apocaliss92/wyze-bridge-js");
+    const cloud = new WyzeCloud({
+      apiKey: creds.apiKey,
+      apiId: creds.apiId,
+      loadSession: () => {
+        try {
+          const raw = this.storage.getItem("wyze-session");
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      },
+      saveSession: (session) => {
+        this.storage.setItem("wyze-session", JSON.stringify(session));
+      },
+      clearSession: () => {
+        this.storage.removeItem("wyze-session");
+      },
+    });
+    await cloud.ensureSession(creds.email, creds.password);
+    return cloud;
+  }
+
   // ─── Device Discovery ──────────────────────────────────────────
 
   async discoverDevices(_scan?: boolean): Promise<DiscoveredDevice[]> {
@@ -132,29 +166,10 @@ export default class WyzeNativeProvider
     }
 
     this.console.log("Discovering Wyze cameras...");
-    const creds = this.getCloudCredentials();
 
     try {
-      const { WyzeCloud } = await import("@apocaliss92/wyze-bridge-js");
-      const cloud = new WyzeCloud({
-        apiKey: creds.apiKey,
-        apiId: creds.apiId,
-        loadSession: () => {
-          try {
-            const raw = this.storage.getItem("wyze-session");
-            return raw ? JSON.parse(raw) : null;
-          } catch { return null; }
-        },
-        saveSession: (session) => {
-          this.storage.setItem("wyze-session", JSON.stringify(session));
-        },
-        clearSession: () => {
-          this.storage.removeItem("wyze-session");
-        },
-      });
-
-      // Reuse existing session or refresh/login as needed
-      await cloud.ensureSession(creds.email, creds.password);
+      const cloud = await this.getCloudClient();
+      if (!cloud) return [];
       const cameraList = await cloud.getCameraList();
 
       const existingNativeIds = new Set(deviceManager.getNativeIds());
@@ -273,18 +288,23 @@ export default class WyzeNativeProvider
     };
     this.storage.setItem(`cam:${nativeId}`, JSON.stringify(camInfo));
 
-    await deviceManager.onDevicesChanged({
+    // onDeviceDiscovered adds a single device incrementally. Using
+    // onDevicesChanged with a one-element list would replace any other
+    // cameras already adopted under this provider (see issue #2 comment from
+    // ra8844: "adding a second camera causes the first one to disappear").
+    return await deviceManager.onDeviceDiscovered({
+      nativeId,
+      name,
+      type: ScryptedDeviceType.Camera,
+      interfaces: [
+        ScryptedInterface.VideoCamera,
+        ScryptedInterface.Camera,
+        ScryptedInterface.MotionSensor,
+        ScryptedInterface.Settings,
+        ScryptedInterface.Online,
+      ],
       providerNativeId: this.nativeId,
-      devices: [{
-        nativeId,
-        name,
-        type: ScryptedDeviceType.Camera,
-        interfaces: [ScryptedInterface.VideoCamera,
-            ScryptedInterface.Camera,
-            ScryptedInterface.MotionSensor, ScryptedInterface.Settings, ScryptedInterface.Online],
-      } as any],
     });
-    return nativeId;
   }
 
   // ─── Device Provider ───────────────────────────────────────────
@@ -329,19 +349,10 @@ export default class WyzeNativeProvider
   async refreshCameraIps(): Promise<void> {
     const now = Date.now();
     if (now - this.lastIpRefreshAt < 5 * 60 * 1000) return;
-    if (!this.hasCredentials()) return;
 
     try {
-      const { WyzeCloud } = await import("@apocaliss92/wyze-bridge-js");
-      const creds = this.getCloudCredentials();
-      const cloud = new WyzeCloud({
-        apiKey: creds.apiKey,
-        apiId: creds.apiId,
-        loadSession: () => { try { const r = this.storage.getItem("wyze-session"); return r ? JSON.parse(r) : null; } catch { return null; } },
-        saveSession: (s) => { this.storage.setItem("wyze-session", JSON.stringify(s)); },
-        clearSession: () => { this.storage.removeItem("wyze-session"); },
-      });
-      await cloud.ensureSession(creds.email, creds.password);
+      const cloud = await this.getCloudClient();
+      if (!cloud) return;
       const cameras = await cloud.getCameraList();
       for (const cam of cameras) {
         const id = cam.mac.toUpperCase();

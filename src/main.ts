@@ -33,6 +33,7 @@ export default class WyzeNativeProvider
   implements DeviceProvider, DeviceCreator, DeviceDiscovery, Settings
 {
   private cameras = new Map<string, WyzeNativeCamera>();
+  private lastIpRefreshAt = 0;
 
   constructor(nativeId?: string) {
     super(nativeId);
@@ -306,11 +307,53 @@ export default class WyzeNativeProvider
     }
   }
 
+  /** Update the stored IP for a camera (e.g. after broadcast discovery found it at a different address) */
+  updateCameraIp(nativeId: string, ip: string): void {
+    const raw = this.getCameraInfo(nativeId);
+    if (raw) this.storage.setItem(`cam:${nativeId}`, JSON.stringify({ ...raw, ip }));
+  }
+
   /** Get stored camera info for a given nativeId */
   getCameraInfo(nativeId: string): any {
     try {
       const raw = this.storage.getItem(`cam:${nativeId}`);
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
+  }
+
+  /**
+   * Refresh camera IPs from the Wyze cloud API.
+   * Debounced to at most once per 5 minutes — Wyze API returns the last-known
+   * local IP for each camera, which can become stale if DHCP reassigns the address.
+   */
+  async refreshCameraIps(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastIpRefreshAt < 5 * 60 * 1000) return;
+    if (!this.hasCredentials()) return;
+
+    try {
+      const { WyzeCloud } = await import("@apocaliss92/wyze-bridge-js");
+      const creds = this.getCloudCredentials();
+      const cloud = new WyzeCloud({
+        apiKey: creds.apiKey,
+        apiId: creds.apiId,
+        loadSession: () => { try { const r = this.storage.getItem("wyze-session"); return r ? JSON.parse(r) : null; } catch { return null; } },
+        saveSession: (s) => { this.storage.setItem("wyze-session", JSON.stringify(s)); },
+        clearSession: () => { this.storage.removeItem("wyze-session"); },
+      });
+      await cloud.ensureSession(creds.email, creds.password);
+      const cameras = await cloud.getCameraList();
+      for (const cam of cameras) {
+        const id = cam.mac.toUpperCase();
+        const prev = this.getCameraInfo(id);
+        if (prev && prev.ip !== cam.ip) {
+          this.console.log(`IP updated for ${cam.nickname}: ${prev.ip} → ${cam.ip}`);
+        }
+        this.storage.setItem(`cam:${id}`, JSON.stringify(cam));
+      }
+      this.lastIpRefreshAt = now;
+    } catch (e: any) {
+      this.console.warn(`Camera IP refresh failed: ${e?.message}`);
+    }
   }
 }

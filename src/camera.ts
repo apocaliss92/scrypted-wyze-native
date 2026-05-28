@@ -420,15 +420,25 @@ export class WyzeNativeCamera
   }
 
   private async createRfcServer(): Promise<WyzeRfc4571Server> {
+    // Refresh IPs from Wyze cloud — the API can return stale IPs after DHCP renewals.
+    // Debounced to at most once per 5 minutes so retries don't spam the API.
+    await this.provider.refreshCameraIps().catch(() => {});
+
     const info = this.provider.getCameraInfo(this.nativeId);
     if (!info?.ip || !info?.p2pId || !info?.enr || !info?.mac)
       throw new Error(`Incomplete camera info for ${this.nativeId}. Run discovery.`);
 
+    const ipBefore = info.ip;
     this.console.log(`Connecting to ${info.nickname} (${info.ip})...`);
     const { createWyzeRfc4571Server } = await import("@apocaliss92/wyze-bridge-js");
     const server = await createWyzeRfc4571Server({
       camera: info, frameSize: this.getResolutionFrameSize(), bitrate: this.getBitrateValue(), logger: this.console,
     });
+    // Persist updated IP if broadcast discovery found the camera at a different address
+    if (info.ip !== ipBefore) {
+      this.console.log(`Persisting updated IP for ${info.nickname}: ${ipBefore} → ${info.ip}`);
+      this.provider.updateCameraIp(this.nativeId, info.ip);
+    }
     this.console.log(`✅ P2P: tcp://${server.host}:${server.port} (${server.videoType})`);
 
     // Start idle timer when last TCP client disconnects

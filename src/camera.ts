@@ -226,6 +226,14 @@ export class WyzeNativeCamera
         choices: ["on", "off"], type: "string",
       },
       {
+        group: "Two-way Audio",
+        key: "talkCodec", title: "Talk Codec (experimental)",
+        description: "Audio format sent to the camera when using the microphone. " +
+          "'auto' uses the camera's codec (big-endian PCM). If talk is silent, try the other options.",
+        value: this.storage.getItem("talkCodec") || "auto",
+        choices: ["auto", "pcm-be", "pcm-le", "pcmu", "pcma"], type: "string",
+      },
+      {
         group: "Status",
         key: "status", title: "Connection Status",
         value: connected ? "🟢 Connected (P2P/DTLS)" : "⚪ Disconnected",
@@ -328,22 +336,32 @@ export class WyzeNativeCamera
     await conn.startIntercom();
 
     // Pick a return codec the camera accepts (audioEncoderList = PCMU/PCMA/PCM).
-    // Prefer the codec the camera sent us; fall back to PCMU 8 kHz mono.
-    const SUPPORTED: Record<number, { fmt: string; acodec: string; bps: number }> = {
-      0x89: { fmt: "mulaw", acodec: "pcm_mulaw", bps: 1 }, // PCMU
-      0x8a: { fmt: "alaw", acodec: "pcm_alaw", bps: 1 }, // PCMA
-      0x8c: { fmt: "s16le", acodec: "pcm_s16le", bps: 2 }, // PCM/L16
+    // The wire codec id (fi[0] in the audio frame) is decoupled from the ffmpeg
+    // encoding so PCM can be sent big- or little-endian. The camera streams its
+    // mic as big-endian L16, so 'auto' returns big-endian PCM.
+    type TalkEnc = { codec: number; acodec: string; fmt: string; bps: number };
+    const VARIANTS: Record<string, TalkEnc> = {
+      "pcm-be": { codec: 0x8c, acodec: "pcm_s16be", fmt: "s16be", bps: 2 },
+      "pcm-le": { codec: 0x8c, acodec: "pcm_s16le", fmt: "s16le", bps: 2 },
+      pcmu: { codec: 0x89, acodec: "pcm_mulaw", fmt: "mulaw", bps: 1 },
+      pcma: { codec: 0x8a, acodec: "pcm_alaw", fmt: "alaw", bps: 1 },
     };
     const detected = conn.getBackchannelCodec();
-    let codec = detected.codec;
-    let sampleRate = detected.sampleRate || 8000;
-    let channels = detected.channels || 1;
-    if (!SUPPORTED[codec]) {
-      codec = 0x89;
-      sampleRate = 8000;
-      channels = 1;
+    const sampleRate = detected.sampleRate || 8000;
+    const channels = detected.channels || 1;
+    const choice = this.storage.getItem("talkCodec") || "auto";
+    let enc: TalkEnc;
+    if (choice !== "auto" && VARIANTS[choice]) {
+      enc = VARIANTS[choice]!;
+    } else if (detected.codec === 0x89) {
+      enc = VARIANTS.pcmu!;
+    } else if (detected.codec === 0x8a) {
+      enc = VARIANTS.pcma!;
+    } else {
+      // PCM (or unknown): camera mic is big-endian L16, so return big-endian.
+      enc = VARIANTS["pcm-be"]!;
     }
-    const enc = SUPPORTED[codec]!;
+    const codec = enc.codec;
     const FRAME_SAMPLES = 160;
     const frameBytes = FRAME_SAMPLES * enc.bps * channels;
     const frameDurationUS = Math.floor((FRAME_SAMPLES * 1_000_000) / sampleRate);

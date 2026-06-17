@@ -190,6 +190,7 @@ export default class WyzeNativeProvider
             ScryptedInterface.MotionSensor,
             ScryptedInterface.Settings,
             ScryptedInterface.Online,
+            ScryptedInterface.Intercom,
           ],
           info: {
             model: cam.productModel,
@@ -249,6 +250,7 @@ export default class WyzeNativeProvider
         ScryptedInterface.MotionSensor,
         ScryptedInterface.Settings,
         ScryptedInterface.Online,
+        ScryptedInterface.Intercom,
       ],
       providerNativeId: this.nativeId,
     });
@@ -302,6 +304,7 @@ export default class WyzeNativeProvider
         ScryptedInterface.MotionSensor,
         ScryptedInterface.Settings,
         ScryptedInterface.Online,
+        ScryptedInterface.Intercom,
       ],
       providerNativeId: this.nativeId,
     });

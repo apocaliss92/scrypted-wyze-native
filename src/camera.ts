@@ -14,6 +14,8 @@ import sdk, {
   Camera,
   Device,
   DeviceProvider,
+  FFmpegInput,
+  Intercom,
   MediaObject,
   MotionSensor,
   Online,
@@ -33,12 +35,21 @@ import { spawn } from "child_process";
 import type WyzeNativeProvider from "./main";
 import { WyzeSiren, WyzeFloodlight, sirenSuffix, floodlightSuffix } from "./accessories";
 
+interface WyzeBackchannelConn {
+  hasTwoWayStreaming: boolean;
+  isBackchannelReady: boolean;
+  startIntercom(): Promise<void>;
+  stopIntercom(): void;
+  writeAudio(codec: number, payload: Buffer, timestampUS: number, sampleRate: number, channels: number): void;
+  getBackchannelCodec(): { codec: number; sampleRate: number; channels: number };
+}
+
 interface WyzeRfc4571Server {
   host: string;
   port: number;
   sdp: string;
   videoType: string;
-  connection: any; // WyzeDTLSConn
+  connection: any; // WyzeDTLSConn (implements WyzeBackchannelConn)
   close: () => Promise<void>;
   readonly clientCount: number;
   onClientDisconnect: (cb: (remaining: number) => void) => void;
@@ -46,7 +57,7 @@ interface WyzeRfc4571Server {
 
 export class WyzeNativeCamera
   extends ScryptedDeviceBase
-  implements VideoCamera, Camera, MotionSensor, Settings, Online, DeviceProvider
+  implements VideoCamera, Camera, MotionSensor, Settings, Online, DeviceProvider, Intercom
 {
   provider: WyzeNativeProvider;
   private rfcServer: WyzeRfc4571Server | null = null;
@@ -55,6 +66,7 @@ export class WyzeNativeCamera
   private eventPollTimer: ReturnType<typeof setInterval> | null = null;
   private lastEventTs = 0;
   private boaMotionStopper: (() => void) | null = null;
+  private intercomFfmpeg: ReturnType<typeof spawn> | null = null;
 
   // Sub-devices
   private siren?: WyzeSiren;
@@ -292,6 +304,99 @@ export class WyzeNativeCamera
       mediaStreamOptions: { id: "native-main", name: "Native P2P", container: "rtp", video: { codec: server.videoType.toLowerCase() }, audio: null },
     };
     return await sdk.mediaManager.createMediaObject(Buffer.from(JSON.stringify(rfc)), "x-scrypted/x-rfc4571");
+  }
+
+  // ─── Intercom (two-way audio) ─────────────────────────────────
+  // EXPERIMENTAL: relies on the hand-rolled backchannel DTLS server in
+  // @apocaliss92/wyze-bridge-js. Needs validation on real hardware.
+
+  async startIntercom(media: MediaObject): Promise<void> {
+    await this.stopIntercom();
+
+    const server = await this.ensureRfcServer();
+    const conn = server.connection as WyzeBackchannelConn;
+    if (!conn.hasTwoWayStreaming) {
+      this.console.warn("Camera did not advertise two-way audio; attempting intercom anyway.");
+    }
+
+    const ffmpegInput = await sdk.mediaManager.convertMediaObjectToJSON<FFmpegInput>(
+      media,
+      ScryptedMimeTypes.FFmpegInput,
+    );
+
+    this.console.log("Intercom: enabling return-audio channel…");
+    await conn.startIntercom();
+
+    // Pick a return codec the camera accepts (audioEncoderList = PCMU/PCMA/PCM).
+    // Prefer the codec the camera sent us; fall back to PCMU 8 kHz mono.
+    const SUPPORTED: Record<number, { fmt: string; acodec: string; bps: number }> = {
+      0x89: { fmt: "mulaw", acodec: "pcm_mulaw", bps: 1 }, // PCMU
+      0x8a: { fmt: "alaw", acodec: "pcm_alaw", bps: 1 }, // PCMA
+      0x8c: { fmt: "s16le", acodec: "pcm_s16le", bps: 2 }, // PCM/L16
+    };
+    const detected = conn.getBackchannelCodec();
+    let codec = detected.codec;
+    let sampleRate = detected.sampleRate || 8000;
+    let channels = detected.channels || 1;
+    if (!SUPPORTED[codec]) {
+      codec = 0x89;
+      sampleRate = 8000;
+      channels = 1;
+    }
+    const enc = SUPPORTED[codec]!;
+    const FRAME_SAMPLES = 160;
+    const frameBytes = FRAME_SAMPLES * enc.bps * channels;
+    const frameDurationUS = Math.floor((FRAME_SAMPLES * 1_000_000) / sampleRate);
+    this.console.log(
+      `Intercom: codec=0x${codec.toString(16)} (${enc.fmt}) ${sampleRate}Hz x${channels}, frame=${frameBytes}B`,
+    );
+
+    const ff = spawn(
+      "ffmpeg",
+      [
+        "-hide_banner", "-loglevel", "error",
+        ...ffmpegInput.inputArguments!,
+        "-vn", "-sn", "-dn",
+        "-acodec", enc.acodec,
+        "-ar", String(sampleRate),
+        "-ac", String(channels),
+        "-f", enc.fmt,
+        "pipe:1",
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    this.intercomFfmpeg = ff;
+
+    let backlog: Buffer = Buffer.alloc(0);
+    let ts = 0;
+    ff.stdout.on("data", (chunk: Buffer) => {
+      backlog = Buffer.concat([backlog, chunk]);
+      while (backlog.length >= frameBytes) {
+        const frame = backlog.subarray(0, frameBytes);
+        backlog = backlog.subarray(frameBytes);
+        try {
+          conn.writeAudio(codec, Buffer.from(frame), ts >>> 0, sampleRate, channels);
+        } catch (e) {
+          this.console.warn("Intercom writeAudio failed:", (e as Error)?.message);
+        }
+        ts = (ts + frameDurationUS) >>> 0;
+      }
+    });
+    ff.stderr.on("data", (d: Buffer) => this.console.warn(`[intercom ffmpeg] ${d.toString().trim()}`));
+    ff.on("close", (code) => this.console.log(`Intercom ffmpeg exited (${code})`));
+  }
+
+  async stopIntercom(): Promise<void> {
+    if (this.intercomFfmpeg) {
+      try { this.intercomFfmpeg.stdin?.end(); } catch {}
+      try { this.intercomFfmpeg.kill("SIGKILL"); } catch {}
+      this.intercomFfmpeg = null;
+    }
+    try {
+      (this.rfcServer?.connection as WyzeBackchannelConn | undefined)?.stopIntercom();
+    } catch (e) {
+      this.console.warn("stopIntercom error:", (e as Error)?.message);
+    }
   }
 
   // ─── Camera (snapshot) ────────────────────────────────────────

@@ -299,17 +299,24 @@ export class WyzeNativeCamera
   // ─── VideoCamera ───────────────────────────────────────────────
 
   async getVideoStreamOptions(): Promise<ResponseMediaStreamOptions[]> {
-    return [{ id: "native-main", name: "Native P2P", container: "rtp", video: { codec: "h264" }, audio: null }];
+    // Wyze cameras carry a mic; advertise audio present (codec detected from
+    // the RFC4571 SDP at stream time). Declaring `audio: null` here told
+    // Scrypted the stream had no audio, muting it for non-WebRTC consumers.
+    return [{ id: "native-main", name: "Native P2P", container: "rtp", video: { codec: "h264" }, audio: {} }];
   }
 
   async getVideoStream(_options?: RequestMediaStreamOptions): Promise<MediaObject> {
     const server = await this.ensureRfcServer();
     this.clearIdleTimer();
-    // SDP from the RFC4571 server already includes audio track if detected
+    // SDP from the RFC4571 server already includes the audio track if detected.
+    // Reflect that in the options (codec unspecified → Scrypted reads the SDP);
+    // forcing `audio: null` here muted the camera audio for consumers that
+    // honor the stream options (NVR, HomeKit, the standard player).
+    const hasAudio = /m=audio/.test(server.sdp);
     const rfc = {
       url: new URL(`tcp://${server.host}:${server.port}`),
       sdp: server.sdp,
-      mediaStreamOptions: { id: "native-main", name: "Native P2P", container: "rtp", video: { codec: server.videoType.toLowerCase() }, audio: null },
+      mediaStreamOptions: { id: "native-main", name: "Native P2P", container: "rtp", video: { codec: server.videoType.toLowerCase() }, audio: hasAudio ? {} : null },
     };
     return await sdk.mediaManager.createMediaObject(Buffer.from(JSON.stringify(rfc)), "x-scrypted/x-rfc4571");
   }

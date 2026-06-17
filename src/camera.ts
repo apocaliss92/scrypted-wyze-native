@@ -369,13 +369,39 @@ export class WyzeNativeCamera
 
     let backlog: Buffer = Buffer.alloc(0);
     let ts = 0;
+    let framesSent = 0;
+    let bytesSent = 0;
+    let gotStdout = false;
+
+    // Visibility: if ffmpeg never produces audio, the camera will be silent
+    // and there is otherwise no signal. Warn after 3s of no output.
+    const noDataTimer = setTimeout(() => {
+      if (!gotStdout) {
+        this.console.warn(
+          "Intercom: ffmpeg produced no audio after 3s — does the source MediaObject have an audio track? (check the [intercom ffmpeg] lines above)",
+        );
+      }
+    }, 3000);
+
+    const statsTimer = setInterval(() => {
+      if (framesSent > 0) {
+        this.console.log(`Intercom: sent ${framesSent} frames / ${bytesSent}B (lastTs=${ts}us)`);
+      }
+    }, 2000);
+
     ff.stdout.on("data", (chunk: Buffer) => {
+      if (!gotStdout) {
+        gotStdout = true;
+        this.console.log(`Intercom: first audio bytes from ffmpeg (${chunk.length}B) — pumping to camera`);
+      }
       backlog = Buffer.concat([backlog, chunk]);
       while (backlog.length >= frameBytes) {
         const frame = backlog.subarray(0, frameBytes);
         backlog = backlog.subarray(frameBytes);
         try {
           conn.writeAudio(codec, Buffer.from(frame), ts >>> 0, sampleRate, channels);
+          framesSent++;
+          bytesSent += frame.length;
         } catch (e) {
           this.console.warn("Intercom writeAudio failed:", (e as Error)?.message);
         }
@@ -383,7 +409,11 @@ export class WyzeNativeCamera
       }
     });
     ff.stderr.on("data", (d: Buffer) => this.console.warn(`[intercom ffmpeg] ${d.toString().trim()}`));
-    ff.on("close", (code) => this.console.log(`Intercom ffmpeg exited (${code})`));
+    ff.on("close", (code) => {
+      clearTimeout(noDataTimer);
+      clearInterval(statsTimer);
+      this.console.log(`Intercom ffmpeg exited (${code}) — sent ${framesSent} frames total`);
+    });
   }
 
   async stopIntercom(): Promise<void> {
